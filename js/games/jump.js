@@ -20,11 +20,14 @@
   const ROOM_A0 = COLS + 2, ROOM_A1 = ROOM_A0 + 24;  // cave interior cols [A0, A1)
   const ROOM_B0 = ROOM_A1 + 2, ROOM_B1 = ROOM_B0 + 26; // disco interior cols [B0, B1)
   const WCOLS = ROOM_B1 + 2;
+  const POUND_HANG = 0.15, POUND_VY = 560, POUND_R = 12;  // ground pound: mid-air pause, slam speed, shockwave reach (px beyond Eva)
+  // cracked floor spots [first col, width] – a ground pound breaks through into a small hidden pocket below
+  const CRACKS = [[6, 2], [124, 2]];
   const LIGHTS = ['#ff3fa4', '#3fe0ff', '#ffe23f', '#7cff4f', '#b45cff', '#ff8a2a'];
 
   GAMES['jump'] = {
     title: 'Gipfelsturm',
-    intro: 'Der letzte Aufstieg! ◀ ▶ laufen, ⬆ springen. Deine Freunde stellen sich dir in den Weg – hüpf ihnen auf den Kopf! Kisten von unten anstoßen, ⬇ auf hohlen Stämmen. Manche Sprünge sind... knifflig.',
+    intro: 'Der letzte Aufstieg! ◀ ▶ laufen, ⬆ springen. Deine Freunde stellen sich dir in den Weg – hüpf ihnen auf den Kopf! Kisten von unten anstoßen, ⬇ auf hohlen Stämmen. In der Luft ⬇ = Stampfer! Manche Sprünge sind... knifflig.',
     start(root, api) {
       api.music('game');
       const cv = api.makeCanvas(root, VW, CH);
@@ -58,13 +61,23 @@
       // bonus crates (hit from below)
       const blocks = new Map();
       [[11, 30, 'pilz'], [117, 20, 'kastanie'], [ROOM_A0 + 9, 32, 'kastanie'], [ROOM_B0 + 5, 32, 'pilz']]
-        .forEach(([tx, ty, kind]) => blocks.set(tx * 64 + ty, { tx, ty, kind, used: false, bump: 0 }));      const shafts = SHAFTS.map(([a, b]) => ({ a, b, rimY: Math.min(surf[a - 1], surf[b]) * T }));
+        .forEach(([tx, ty, kind]) => blocks.set(tx * 64 + ty, { tx, ty, kind, used: false, bump: 0 }));
+      // cracked floor: the crack tiles are solid until a ground pound breaks them; the pocket below is hollow
+      const holes = new Map();
+      const cracks = CRACKS.map(([a, w]) => {
+        const c = { a, b: a + w, row: surf[a], p0: a - 2, p1: a + w + 2, broken: false };
+        for (let x = c.p0; x < c.p1; x++) for (let r = c.row + 1; r <= c.row + 3; r++) holes.set(x * 64 + r, { c, tile: false });
+        for (let x = a; x < c.b; x++) holes.set(x * 64 + c.row, { c, tile: true });
+        return c;
+      });
+      const shafts = SHAFTS.map(([a, b]) => ({ a, b, rimY: Math.min(surf[a - 1], surf[b]) * T }));
       // the big chasm's walls are slick ice: no wall slide / wall jump there (keeps the rocket-jump secret intact)
       const wallOK = tx => tx >= 0 && tx < COLS && tx !== CHASM_A - 1 && tx !== CHASM_B;
       function solid(tx, ty) {
         if (tx < 0 || tx >= WCOLS) return true;
         if (ty < 0 || ty >= ROWS) return false;
-        const s = surf[tx]; if (s >= 0 && ty >= s) return true;
+        const s = surf[tx];
+        if (s >= 0 && ty >= s) { const hh = holes.get(tx * 64 + ty); return !(hh && (!hh.tile || hh.c.broken)); }
         if (ceil[tx] >= 0 && ty <= ceil[tx]) return true;
         return blocks.has(tx * 64 + ty);
       }
@@ -81,11 +94,13 @@
       const candleDefs = [[10, 34, 0], [22, 34, 3], [36, 31, 0], [50, 30, 3], [60, 29, 2], [84, 28, 3],
         [107, 24, 3], [42, 38, 0], [78, 36, 0], [94, 34, 0], [143, 17, 1], [160, 18, 0], [168, 11, 0], [197, 10, 0], [208, 11, 0], [242 + SH, 11, 0],
         // secret cave
-        [ROOM_A0 + 5, 36, 0], [ROOM_A0 + 7, 36, 2], [ROOM_A0 + 13, 32, 1], [ROOM_A0 + 14, 32, 1], [ROOM_A0 + 15, 32, 1], [ROOM_A0 + 18, 36, 0],
+        [ROOM_A0 + 5, 36, 0], [ROOM_A0 + 7, 36, 2], [ROOM_A0 + 13, 32, 1], [ROOM_A0 + 15, 32, 1],
         // secret disco
-        [ROOM_B0 + 3, 36, 0], [ROOM_B0 + 7, 36, 0], [ROOM_B0 + 9, 32, 1], [ROOM_B0 + 10, 32, 1], [ROOM_B0 + 11, 32, 1], [ROOM_B0 + 12, 36, 2],
-        [ROOM_B0 + 14, 29, 1], [ROOM_B0 + 15, 29, 1], [ROOM_B0 + 16, 29, 1], [ROOM_B0 + 18, 36, 0], [ROOM_B0 + 21, 36, 1]];
-      const candles = candleDefs.map(([tx, r, lift]) => ({ x: tx * T + 4, y: r * T - 7 - lift * T, got: false }));
+        [ROOM_B0 + 3, 36, 0], [ROOM_B0 + 7, 36, 0], [ROOM_B0 + 9, 32, 1], [ROOM_B0 + 11, 32, 1], [ROOM_B0 + 14, 29, 1], [ROOM_B0 + 16, 29, 1],
+        // hidden pockets under the cracked floor (4th value = crack index)
+        [9, 38, 0, 0], [127, 28, 0, 1]];
+      // Eva turns 28 → exactly 28 candles in the level
+      const candles = candleDefs.map(([tx, r, lift, hc]) => ({ x: tx * T + 4, y: r * T - 7 - lift * T, got: false, hid: hc == null ? null : cracks[hc] }));
       let candlesGot = 0;
 
       const snails = [[46, 53, 30], [70, 76, 28], [155, 162, 18]].map(([a, b, r]) => ({
@@ -111,11 +126,13 @@
       let seed = 1337;
       const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
       const trees = [];
+      const POUND_SIGN_TX = 4;
       for (let tx = 1; tx < 276 + SH;) {
         tx += 3 + Math.floor(rnd() * 5);
         const s = surf[tx];
         if (s < 0 || surf[tx + 1] !== s || surf[tx - 1] !== s) continue;
         if (Math.abs(tx - GIFT_TX) < 4 || Math.abs(tx - (262 + SH)) < 3) continue;
+        if (cracks.some(c => tx >= c.p0 - 1 && tx <= c.p1) || Math.abs(tx - POUND_SIGN_TX) < 2) continue;
         const type = tx < 168 ? (rnd() * 3 | 0) : tx < 240 + SH ? (rnd() < 0.6 ? 3 : 4) : (rnd() < 0.4 ? 3 : 4);
         trees.push({ tx, row: s, type, big: rnd() < 0.4 });
       }
@@ -129,6 +146,8 @@
       let shaftJumps = 0, wallLearned = false, visitedShaft = false;
       let now = 0, presses = 0, won = false, winT = 0, flash = 0;
       let chasmFails = 0, crossed = false, shake = 0;
+      let pound = null, downPresses = 0, poundLearned = false;   // ground pound state {phase:'hang'|'slam', t}
+      const waves = [];
       let area = 'main', warp = null, power = 0, throwPresses = 0, throwCD = 0, pipeTold = false;
       const projs = [], nuts = [], items = [], popups = [];
       const keys = { L: false, R: false, U: false, D: false };
@@ -153,7 +172,7 @@
         if (k === 'ArrowLeft' || k === 'a' || k === 'A') keys.L = true;
         else if (k === 'ArrowRight' || k === 'd' || k === 'D') keys.R = true;
         else if (k === 'ArrowUp' || k === 'w' || k === 'W' || k === ' ' || k === 'Spacebar') { if (!e.repeat) pressJump(); keys.U = true; }
-        else if (k === 'ArrowDown' || k === 's' || k === 'S') keys.D = true;
+        else if (k === 'ArrowDown' || k === 's' || k === 'S') { if (!e.repeat && !won) downPresses++; keys.D = true; }
         else if (k === 'x' || k === 'X' || k === 'f' || k === 'F' || k === 'Shift') { if (!e.repeat) pressThrow(); }
         else used = false;
         if (used) e.preventDefault();
@@ -176,12 +195,13 @@
         const z = zoneAt(e); ptrs.set(e.pointerId, z);
         if (z === 'U') pressJump();
         if (z === 'W') pressThrow();
+        if (z === 'D' && !won) downPresses++;
       }
       function pMove(e) {
         if (!ptrs.has(e.pointerId)) return;
         e.preventDefault();
         const z = zoneAt(e);
-        if (z !== ptrs.get(e.pointerId)) { ptrs.set(e.pointerId, z); if (z === 'U') pressJump(); if (z === 'W') pressThrow(); }
+        if (z !== ptrs.get(e.pointerId)) { ptrs.set(e.pointerId, z); if (z === 'U') pressJump(); if (z === 'W') pressThrow(); if (z === 'D' && !won) downPresses++; }
       }
       function pUp(e) { ptrs.delete(e.pointerId); }
       const noCtx = e => e.preventDefault();
@@ -238,6 +258,48 @@
         api.sfx('jump');
         puff(side > 0 ? pl.x + pl.w : pl.x, pl.y + pl.h - 4, 6, ['#c9b79a', '#a89a80', '#e8dcc4'], 35, 0.35, 6);
       }
+      /* ---------------- Ground pound (Stampfer) ---------------- */
+      function startPound() {
+        pound = { phase: 'hang', t: 0 };
+        pl.vx = 0; pl.vy = 0; pl.rocket = false; pl.boosted = false; pl.sliding = false; pl.wallLock = 0; pl.buffer = 0; presses = 0;
+        api.sfx('flap');
+        puff(pl.x + 4, pl.y + 7, 6, ['#ffffff', '#e8dcc4'], 30, 0.25);
+      }
+      function poundImpact(by, c0, c1) {
+        pound = null; poundLearned = true;
+        const fx = pl.x + pl.w / 2, fy = pl.y + pl.h;
+        shake = Math.max(shake, 0.4);
+        api.sfx('boom'); api.sfx('step');
+        // crate underneath opens
+        if (by != null) {
+          const seen = new Set();
+          for (let c = c0; c <= c1; c++) { const b = blocks.get(c * 64 + by); if (b && !seen.has(b)) { seen.add(b); bumpBlock(b); } }
+        }
+        // shockwave: friends on the same floor within reach get knocked over
+        for (const e of foes) {
+          if (e.dead) continue;
+          if (Math.abs(e.x + 4 - fx) <= 8 + POUND_R && Math.abs(e.feet - fy) < 6) defeat(e, true);
+        }
+        for (const s of snails) {
+          if (s.shell <= 0 && Math.abs(s.x + 6 - fx) <= 10 + POUND_R && Math.abs(s.y + 8 - fy) < 6) {
+            s.shell = 3; api.sfx('coin'); puff(s.x + 6, s.y, 6, ['#f5d442', '#ffffff'], 40, 0.3);
+          }
+        }
+        // FX: dust skidding out along the floor, debris, a shockwave arc and a pop-up
+        for (let i = 0; i < 18; i++) {
+          const d = i % 2 ? 1 : -1, sp = 50 + Math.random() * 80;
+          parts.push({ x: fx + d * (2 + Math.random() * 3), y: fy - 1 - Math.random() * 2, vx: d * sp, vy: -Math.random() * 35, life: 0.45, max: 0.45, c: ['#c9b79a', '#a89a80', '#e8dcc4'][i % 3], g: 80 });
+        }
+        for (let i = 0; i < 8; i++) parts.push({ x: fx + (Math.random() - 0.5) * 8, y: fy - 1, vx: (Math.random() - 0.5) * 60, vy: -70 - Math.random() * 60, life: 0.55, max: 0.55, c: ['#5e3a22', '#7c8a2e', '#8a6a4a', '#d9822b'][i % 4], g: 380 });
+        waves.push({ x: fx, y: fy, t: 0 });
+        popups.push({ x: fx, y: fy - 30, s: 'STAMPF!', life: 0.8, big: true });
+      }
+      function breakCrack(c) {
+        c.broken = true; shake = Math.max(shake, 0.5);
+        api.sfx('boom'); api.sfx('ding');
+        for (let x = c.a; x < c.b; x++) puff(x * T + 4, c.row * T + 4, 10, ['#5e3a22', '#4a2c19', '#8a6a4a', '#7c8a2e'], 70, 0.6);
+        api.toast('🕳️ Geheimes Versteck!', 1800);
+      }
       function shaftAt() {
         for (const s of shafts) if (pl.x + pl.w > s.a * T && pl.x < s.b * T && pl.y + pl.h > s.rimY + 3) return s;
         return null;
@@ -266,7 +328,7 @@
         pl.x = cp.x; pl.y = cp.y - pl.h; pl.vx = 0; pl.vy = 0; pl.ground = true; pl.onPlat = null;
         pl.airJump = false; pl.usedDouble = false; pl.boosted = false; pl.rocket = false; pl.buffer = 0; pl.inv = 0.5; pl.face = 1;
         pl.wallSide = 0; pl.wallCoy = 0; pl.wallLock = 0; pl.sliding = false;
-        presses = 0; throwPresses = 0; flash = 0.2;
+        presses = 0; throwPresses = 0; flash = 0.2; pound = null; downPresses = 0;
         // friends, crates and power-ups come back; the power-up is lost
         power = 0; warp = null; setArea('main');
         for (const e of foes) { e.dead = false; e.deadT = 0; e.x = e.x0; e.dir = -1; e.cd = 1.5; e.wind = 0; }
@@ -388,12 +450,15 @@
         now += h;
         updatePlats(h);
         if (warp) { updWarp(h); return; }
-        if (!won && inD()) { const wp = pipeUnder(); if (wp) { startWarp(wp); return; } }
+        // ⬇: on the ground = into a warp trunk (held), in the air = ground pound (press)
+        if (downPresses > 0) { downPresses = 0; if (!won && !pl.ground && !pound) startPound(); }
+        if (!won && !pound && inD()) { const wp = pipeUnder(); if (wp) { startWarp(wp); return; } }
         if (pl.onPlat) { pl.x += pl.onPlat.dx; pl.y = pl.onPlat.y - pl.h; }
 
         // horizontal
         let ax = won ? 0 : (inR() ? 1 : 0) - (inL() ? 1 : 0);
         if (pl.wallLock > 0) { pl.wallLock -= h; if (ax !== pl.kickDir) ax = 0; } // brief lock so the wall kick reads
+        if (pound) { ax = 0; pl.vx = 0; presses = 0; pl.buffer = 0; }          // no steering / jumping during the slam
         const maxS = pl.rocket ? ROCKET_VX : pl.boosted ? BOOST_SPEED : SPEED;
         if (ax) {
           pl.vx += ax * (pl.ground ? 900 : 700) * h; pl.face = ax;
@@ -410,7 +475,11 @@
         while (presses > 0) { presses--; tryJump(); }
         if (pl.buffer > 0) { pl.buffer -= h; if (pl.ground || pl.coyote > 0) doJump(); else if (pl.wallSide) doWallJump(pl.wallSide); }
 
-        pl.vy = Math.min(MAXFALL, pl.vy + GRAV * h);
+        if (pound) {
+          pound.t += h;
+          if (pound.phase === 'hang') { pl.vy = 0; if (pound.t >= POUND_HANG) { pound.phase = 'slam'; pound.t = 0; pl.vy = POUND_VY; } }
+          else pl.vy = POUND_VY;
+        } else pl.vy = Math.min(MAXFALL, pl.vy + GRAV * h);
 
         // move X
         pl.x += pl.vx * h;
@@ -429,9 +498,11 @@
         pl.y += pl.vy * h;
         let landed = false, onPlat = null;
         const c0 = Math.floor(pl.x / T), c1 = Math.floor((pl.x + pl.w - 0.001) / T);
+        let landBy = null;
         if (pl.vy > 0) {
           const by = Math.floor((pl.y + pl.h) / T);
-          for (let c = c0; c <= c1; c++) if (solid(c, by)) {
+          if (pound) for (let c = c0; c <= c1; c++) { const hh = holes.get(c * 64 + by); if (hh && hh.tile && !hh.c.broken) breakCrack(hh.c); }
+          for (let c = c0; c <= c1; c++) if (solid(c, by)) { landBy = by;
             pl.y = by * T - pl.h; pl.vy = 0; landed = true; break;
           }
           if (!landed) {
@@ -461,6 +532,7 @@
             if (fallV > 200) puff(pl.x + 4, pl.y + pl.h, 5, ['#c9b79a', '#a89a80'], 30, 0.3, 8);
             if (pl.buffer > 0) doJump();
           }
+          if (pound) poundImpact(landBy, c0, c1);
         } else if (wasGround && pl.vy >= 0) {
           // walked off an edge: coyote already running
         }
@@ -470,7 +542,7 @@
         pl.wallSide = ws;
         if (ws) { pl.wallCoy = WALL_COYOTE; pl.wallCoySide = ws; } else if (landed) pl.wallCoy = 0; else if (pl.wallCoy > 0) pl.wallCoy -= h;
         // falling along a wall = sliding (pose + dust), even without holding toward it; holding slows her more
-        pl.sliding = !!ws && !won && pl.vy > 0;
+        pl.sliding = !!ws && !won && pl.vy > 0 && !pound;
         if (pl.sliding) {
           const cap = (ws > 0 ? inR() : inL()) ? WALL_SLIDE : WALL_SLIDE_FREE;
           if (pl.vy > cap) pl.vy = cap;
@@ -491,9 +563,10 @@
       /* ---------------- Game logic (per frame) ---------------- */
       function overlap(ax, ay, aw, ah, bx, by, bw, bh) { return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by; }
       const STOMP_LINES = { magnus: ['Autsch!', 'Menno!'], hannah: ['Na warte!', 'Hey!!'], laurenz: ['Uff!', 'Na warte!'], enrico: ['Autsch!', 'Nicht fair!'] };
-      function defeat(e) {
+      function defeat(e, big) {
         e.dead = true; e.deadT = 0.4; e.wind = 0;
         api.sfx('coin');
+        if (big) { puff(e.x + 4, e.feet - 10, 14, ['#f5d442', '#ffffff', '#ff9a3a', '#d94c3d'], 90, 0.6); e.deadT = 0.55; }
         puff(e.x + 4, e.feet - 8, 12, ['#ffffff', '#e8e0d0', '#c9c2b8'], 45, 0.5);
         puff(e.x + 4, e.feet - 12, 6, ['#f5d442', '#ff3fa4', '#3fe0ff'], 60, 0.4);
         const L = STOMP_LINES[e.who];
@@ -527,7 +600,8 @@
           // Eva vs friend
           const ey = e.feet - 14;
           if (overlap(pl.x + 1, pl.y + 1, pl.w - 2, pl.h - 1, e.x, ey, 8, 14)) {
-            if (pl.vy > 0 && pl.y + pl.h < ey + 8) {
+            if (pound && pound.phase === 'slam') defeat(e, true);   // slams right through
+            else if (pl.vy > 0 && pl.y + pl.h < ey + 8) {
               defeat(e);
               pl.vy = -230; pl.airJump = true; pl.lastJumpT = now; pl.usedDouble = false; pl.ground = false; pl.onPlat = null;
             } else hurt();
@@ -573,7 +647,8 @@
           if (s.shell > 0) s.shell -= dt;
           else { s.x += s.dir * 10 * dt; if (s.x < s.a) { s.x = s.a; s.dir = 1; } if (s.x > s.b) { s.x = s.b; s.dir = -1; } }
           if (!won && pl.inv <= 0 && s.shell <= 0 && overlap(pl.x + 1, pl.y + 1, pl.w - 2, pl.h - 1, s.x + 1, s.y + 2, 10, 6)) {
-            if (pl.vy > 20 && pl.y + pl.h < s.y + 6) {
+            if (pound && pound.phase === 'slam') { s.shell = 3; api.sfx('coin'); puff(s.x + 6, s.y, 6, ['#f5d442', '#ffffff'], 40, 0.3); }
+            else if (pl.vy > 20 && pl.y + pl.h < s.y + 6) {
               pl.vy = -230; pl.airJump = true; pl.lastJumpT = now; pl.usedDouble = false; s.shell = 3;
               api.sfx('jump'); puff(s.x + 6, s.y, 6, ['#f5d442', '#ffffff'], 40, 0.3);
             } else hurt();
@@ -586,6 +661,8 @@
         for (const b of blocks.values()) if (b.bump > 0) b.bump -= dt;
         if (throwCD > 0) throwCD -= dt;
         while (throwPresses > 0) { throwPresses--; throwNut(); }
+        for (let i = waves.length - 1; i >= 0; i--) { waves[i].t += dt; if (waves[i].t > 0.35) waves.splice(i, 1); }
+        if (pound && pound.phase === 'slam' && Math.random() < dt * 60) parts.push({ x: pl.x + 1 + Math.random() * 6, y: pl.y - 2, vx: 0, vy: -30, life: 0.2, max: 0.2, c: '#ffffff', g: 0 });
         for (let i = popups.length - 1; i >= 0; i--) { const q = popups[i]; q.life -= dt; q.y -= 14 * dt; if (q.life <= 0) popups.splice(i, 1); }
         if (power > 0 && !warp && Math.random() < dt * 10) parts.push({ x: pl.x + Math.random() * 10 - 1, y: pl.y + Math.random() * 14, vx: 0, vy: -12, life: 0.5, max: 0.5, c: power > 1 ? '#ff9a3a' : (Math.random() < 0.5 ? '#ffffff' : '#f5d442'), g: 0 });
         if (!pipeTold && !warp && pipeUnder()) { pipeTold = true; api.toast('⬇ drücken = ab ins Rohr!', 2200); }
@@ -598,8 +675,9 @@
         });
         // candles
         for (const c of candles) {
-          if (!c.got && Math.abs(pl.x + 4 - c.x) < 8 && Math.abs(pl.y + 7 - c.y) < 12) {
+          if (!c.got && !(c.hid && !c.hid.broken) && Math.abs(pl.x + 4 - c.x) < 8 && Math.abs(pl.y + 7 - c.y) < 12) {
             c.got = true; candlesGot++; api.sfx('coin');
+            if (candlesGot === candles.length) { api.sfx('win'); api.toast('Alle 28 Kerzen! Alles Gute zum 28., Eva! 🎂', 3500); if (window.Konfetti) { Konfetti.burst(innerWidth / 2, innerHeight * 0.6, 120, 1.5); Konfetti.rain(80); } }
             puff(c.x, c.y, 8, ['#f5d442', '#f2b33d', '#ffffff'], 35, 0.4);
           }
         }
@@ -706,6 +784,8 @@
           if (t.tx > 244 + SH) fr('#eef3f6', x + 1, b - 6, 6, 1);
         }
       }
+      // like solid(), but a still-hidden pocket counts as solid earth (no edge shading gives it away)
+      function vsolid(tx, ty) { const hh = holes.get(tx * 64 + ty); return (hh && !hh.c.broken) || solid(tx, ty); }
       function drawTiles(ox, oy) {
         const tx0 = Math.floor(ox / T), ty0 = Math.floor(oy / T);
         for (let tx = tx0; tx <= tx0 + 23; tx++) {
@@ -717,6 +797,13 @@
           const snowy = tx >= 244 + SH;
           for (let ty = Math.max(top, ty0); ty <= ty0 + 31 && ty < ROWS; ty++) {
             const x = tx * T - ox, y = ty * T - oy, hv = hash(tx, ty);
+            const hh = holes.get(tx * 64 + ty);
+            if (hh && hh.c.broken) {           // opened hidden pocket
+              fr('#1e120a', x, y, T, T);
+              if (hv % 4 === 0) fr('#2e1d12', x + (hv % 6), y + ((hv >> 3) % 6), 2, 1);
+              if (ty === hh.c.row + 1 && hv % 2) fr('#6b4a2a', x + (hv % 5) + 1, y, 1, 2 + (hv % 3));   // roots
+              continue;
+            }
             if (rocky) {
               fr(ty === s ? '#77736d' : '#625e59', x, y, T, T);
               fr('#4e4a46', x + (hv % 6), y + ((hv >> 3) % 6), 2, 1);
@@ -739,8 +826,14 @@
                 fr('#6b4a2a', x, y + 3, T, 1);
               }
             }
-            if (!solid(tx - 1, ty)) fr('rgba(0,0,0,.25)', x, y, 1, T);
-            if (!solid(tx + 1, ty)) fr('rgba(0,0,0,.25)', x + 7, y, 1, T);
+            if (!vsolid(tx - 1, ty)) fr('rgba(0,0,0,.25)', x, y, 1, T);
+            if (!vsolid(tx + 1, ty)) fr('rgba(0,0,0,.25)', x + 7, y, 1, T);
+            if (hh && hh.tile) {               // cracked floor tile (breaks with a ground pound)
+              const k = tx - hh.c.a;
+              fr('#2a180c', x + 1 + k, y + 3, 1, 2); fr('#2a180c', x + 2 + k, y + 4, 2, 1); fr('#2a180c', x + 4 - k, y + 5, 1, 2);
+              fr('#2a180c', x + 5 - k, y + 6, 2, 1); fr('#2a180c', x + 3, y + 1, 1, 2);
+              fr('#8a6a4a', x + 2 + k, y + 3, 1, 1);
+            }
             if (tx === CHASM_A - 1 || tx === CHASM_B) {   // slick ice glaze on the chasm walls
               const ix = tx === CHASM_B ? x : x + 5, gl = ty === s ? 2 : 0;
               fr('#9fd0e4', ix, y + gl, 3, T - gl); fr('#d8f0f8', tx === CHASM_B ? x + 1 : x + 6, y + top, 1, T - top);
@@ -955,7 +1048,7 @@
       function bubble(cx, bottomY, lines, arrows) {
         ctx.save();
         ctx.font = '8px "Press Start 2P", monospace';
-        let w = 0; lines.forEach(l => { w = Math.max(w, ctx.measureText(l.replace('⬆', ' ')).width); });
+        let w = 0; lines.forEach(l => { w = Math.max(w, ctx.measureText(l.replace('⬆', ' ').replace('⬇', ' ')).width); });
         ctx.restore();
         w = Math.ceil(w) + 8;
         const lh = 10, hh = lines.length * lh + 4 + (arrows ? 12 : 0);
@@ -970,9 +1063,9 @@
         }
         lines.forEach((l, i) => {
           // '⬆' is drawn as the jump button's pixel arrow (the pixel font has no glyph for it)
-          const k = l.indexOf('⬆'), ly = by + 3 + i * lh;
-          api.text(ctx, k < 0 ? l : l.replace('⬆', ' '), bx + 4, ly, 8, '#2a1a10', 'left', false);
-          if (k >= 0) api.drawPixels(ctx, ARROW_U, { X: '#d94c3d' }, bx + 4 + k * 8, ly, 1);
+          const ku = l.indexOf('⬆'), kdn = l.indexOf('⬇'), k = ku >= 0 ? ku : kdn, ly = by + 3 + i * lh;
+          api.text(ctx, k < 0 ? l : l.replace('⬆', ' ').replace('⬇', ' '), bx + 4, ly, 8, '#2a1a10', 'left', false);
+          if (k >= 0) api.drawPixels(ctx, ku >= 0 ? ARROW_U : ARROW_D, { X: '#d94c3d' }, bx + 4 + k * 8, ly, 1);
         });
         if (arrows && Math.sin(now * 12) > -0.3) {
           const ay = by + 3 + lines.length * lh;
@@ -1007,7 +1100,10 @@
 
       const SIGN_X = (SHAFTS[0][0] - 2) * T, SIGN_FEET = surf[SHAFTS[0][0] - 2] * T;
       const WALL_HINT = ['An die Wand', '+ ⬆ = Walljump!'];
+      const PSIGN_X = POUND_SIGN_TX * T, PSIGN_FEET = surf[POUND_SIGN_TX] * T;
+      const POUND_HINT = ['In der Luft ⬇', '= STAMPFER!'];
       function drawHint(ox, oy) {
+        if (!poundLearned && !won && area === 'main' && pl.ground && Math.abs(pl.x - PSIGN_X) < 64) bubble(PSIGN_X + 5 - ox, PSIGN_FEET - 18 - oy, POUND_HINT);
         if (wallLearned || won) return;
         const s = shaftAt();
         if (s) bubble((s.a + s.b) / 2 * T - ox, s.rimY - 2 - oy, WALL_HINT);
@@ -1084,9 +1180,9 @@
           if (Math.sin(now * 4 + 2) > 0.7) { fr('#ffffff', gx - 3, gy + 1, 1, 3); fr('#ffffff', gx - 4, gy + 2, 3, 1); }
         }
 
-        // wooden sign before the first shaft
-        {
-          const x = SIGN_X - ox, y = SIGN_FEET - oy;
+        // wooden signs: ground-pound hint near the start, wall-jump hint before the first shaft
+        for (const [sxw, sfw] of [[PSIGN_X, PSIGN_FEET], [SIGN_X, SIGN_FEET]]) {
+          const x = sxw - ox, y = sfw - oy;
           if (x > -16 && x < VW + 16) {
             fr('#3b2416', x + 4, y - 9, 2, 9);
             fr('#3b2416', x - 1, y - 17, 12, 9); fr('#9a6a3a', x, y - 16, 10, 7); fr('#c08a4a', x, y - 16, 10, 1);
@@ -1105,7 +1201,7 @@
         // candles
         const flick = Math.sin(now * 14) > 0;
         for (const c of candles) {
-          if (c.got) continue;
+          if (c.got || (c.hid && !c.hid.broken)) continue;
           const x = Math.round(c.x - 2 - ox), y = Math.round(c.y - 4 - oy + Math.sin(now * 3 + c.x) * 1);
           if (x < -8 || x > VW + 8) continue;
           fr('rgba(245,212,66,.18)', x - 2, y - 2, 9, 6);
@@ -1166,7 +1262,12 @@
           drawEva(frame, px, py, pl.face < 0);
           ctx.restore();
         } else if (!(pl.inv > 0 && Math.floor(pl.inv * 16) % 2)) {
-          drawEva(frame, px, py, pl.sliding ? pl.wallSide > 0 : pl.face < 0);
+          if (pound && pound.phase === 'hang') {
+            // little tuck & spin before the slam
+            ctx.save(); ctx.translate(px + 6, py + 8); ctx.rotate(Math.min(1, pound.t / POUND_HANG) * Math.PI * 2 * pl.face);
+            drawEva('jump', -6, -8, pl.face < 0); ctx.restore();
+          } else drawEva(frame, px, py, pl.sliding ? pl.wallSide > 0 : pl.face < 0);
+          if (pound && pound.phase === 'slam') { ctx.globalAlpha = 0.7; fr('#ffffff', px + 2, py - 9, 1, 7); fr('#ffffff', px + 9, py - 7, 1, 6); fr('#ffffff', px + 5, py - 12, 1, 5); ctx.globalAlpha = 1; }
           if (hand >= 0) { fr('#5a3a22', hand, py + 4, 2, 3); fr('#f0c8a0', hand, py + 4, 2, 2); }
         }
         // projectiles & chestnuts
@@ -1208,7 +1309,23 @@
           const ay = p.topY - oy - (on ? 27 : 12) + Math.round(Math.sin(now * 6) * 2);
           if (on || Math.sin(now * 5) > -0.4) api.drawPixels(ctx, ARROW_D, { X: on ? '#f5d442' : '#e8dcc4' }, p.tx * T + 5 - ox, ay, 1);
         }
-        for (const q of popups) api.text(ctx, q.s, Math.round(q.x - ox), Math.round(q.y - oy), 8, '#ffffff', 'center');
+        // ground-pound shockwave: two expanding pixel arcs hugging the floor
+        for (const w of waves) {
+          const k = w.t / 0.35, r = 6 + k * 34;
+          ctx.globalAlpha = 1 - k;
+          for (let a = 0; a <= 12; a++) {
+            const ang = a / 12 * Math.PI, dx = Math.cos(ang) * r, dy = Math.sin(ang) * r * 0.32;
+            fr(a % 2 ? '#fff6e8' : '#f5d442', Math.round(w.x + dx - ox), Math.round(w.y - dy - oy), 2, 1);
+          }
+          fr('#fff6e8', Math.round(w.x - r - ox), Math.round(w.y - 1 - oy), Math.round(r * 2), 1);
+          ctx.globalAlpha = 1;
+        }
+        for (const q of popups) {
+          if (q.big) {
+            const x = Math.max(60, Math.min(VW - 60, Math.round(q.x - ox)));
+            api.text(ctx, q.s, x, Math.round(q.y - oy) - (q.life > 0.7 ? 3 : 0), 16, q.life % 0.16 < 0.08 ? '#f5d442' : '#ff9a3a', 'center');
+          } else api.text(ctx, q.s, Math.round(q.x - ox), Math.round(q.y - oy), 8, '#ffffff', 'center');
+        }
         // HUD
         fr('rgba(13,21,17,.55)', 0, 0, VW, 13);
         api.drawPixels(ctx, CANDLE_A, CANDLE_PAL, 3, 3, 1);
