@@ -661,8 +661,8 @@
     load(); timer = setInterval(() => { if (!document.body.contains(box)) return clearInterval(timer); load(); }, 5000);
   }
   /* =====================================================================
-     KONFETTI — Eva always has confetti on her: 🎉 in the HUD throws some anywhere,
-     every won world ends in a big burst. A pixel-confetti layer above everything.
+     KONFETTI — Eva always has confetti on her. A pixel-confetti layer above everything;
+     every won world ends in a big burst, and games can call Konfetti.burst(x, y, n, power) / Konfetti.rain(n).
      ===================================================================== */
   const Confetti = (function () {
     const cv = document.getElementById('confettiLayer'), g = cv.getContext('2d');
@@ -695,16 +695,6 @@
     return { burst, rain };
   })();
   window.Konfetti = Confetti; // games may use it too: Konfetti.burst(x, y, n)
-  let confettiCount = 0;
-  document.getElementById('confettiBtn').onclick = e => {
-    A.unlock(); A.sfx('coin');
-    const r = e.currentTarget.getBoundingClientRect();
-    Confetti.burst(r.left + r.width / 2, r.bottom, 70, 1.2);
-    confettiCount++;
-    const MSG = { 1: 'Eva hat IMMER Konfetti dabei 🎉', 10: '10× Konfetti! Der Vorrat ist unendlich.', 28: '28× Konfetti – eins für jedes Jahr! 🎂', 50: '50×?! Das putzt ihr aber weg.', 100: '100× Konfetti. Legende. 👑' };
-    if (MSG[confettiCount]) E.toast(MSG[confettiCount], 2200);
-  };
-
   document.getElementById('scoreBtn').onclick = () => { A.unlock(); A.sfx('click'); showBoard(); };
 
   window.__go = go; // handy for testing from the console
