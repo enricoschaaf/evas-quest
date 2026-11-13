@@ -390,6 +390,8 @@
       <button class="btn" id="cont">WEITER ▶</button></div></div>`);
     stage.appendChild(msg);
     msg.querySelector('#showBoard').onclick = () => showBoard(L.id);
+    // big confetti celebration for every won world
+    setTimeout(() => { Confetti.burst(innerWidth * 0.25, innerHeight * 0.75, 80, 1.4); Confetti.burst(innerWidth * 0.75, innerHeight * 0.75, 80, 1.4); Confetti.rain(60); }, 150);
     if (ms > 0) submitScore(L.id, ms).then(r => {
       const el = msg.querySelector('#rankLine'); if (!el) return;
       el.textContent = r && r.rank ? `Platz ${r.rank} von ${r.board.length} 🏆` : 'Bestenliste gerade nicht erreichbar';
@@ -658,6 +660,51 @@
     overlay.innerHTML = ''; overlay.className = 'dim'; overlay.appendChild(box);
     load(); timer = setInterval(() => { if (!document.body.contains(box)) return clearInterval(timer); load(); }, 5000);
   }
+  /* =====================================================================
+     KONFETTI — Eva always has confetti on her: 🎉 in the HUD throws some anywhere,
+     every won world ends in a big burst. A pixel-confetti layer above everything.
+     ===================================================================== */
+  const Confetti = (function () {
+    const cv = document.getElementById('confettiLayer'), g = cv.getContext('2d');
+    const P = [], COLS = ['#f5c542', '#d94c3d', '#6fae4f', '#4a7fd9', '#f2a7b8', '#8a5bd9', '#ffffff', '#3fe0ff', '#ff3fa4'];
+    let raf = 0, last = 0, S2 = 3;
+    function fit() { cv.width = Math.ceil(innerWidth / S2); cv.height = Math.ceil(innerHeight / S2); }
+    fit(); addEventListener('resize', fit);
+    function burst(x, y, n, power) {
+      for (let i = 0; i < n; i++) {
+        const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.2, v = (60 + Math.random() * 160) * (power || 1);
+        P.push({ x: x / S2, y: y / S2, vx: Math.cos(a) * v, vy: Math.sin(a) * v, c: COLS[Math.random() * COLS.length | 0], life: 2.2 + Math.random() * 1.5, ph: Math.random() * 6, w: Math.random() < 0.3 ? 2 : 1 });
+      }
+      if (P.length > 900) P.splice(0, P.length - 900);
+      if (!raf) { last = performance.now(); raf = requestAnimationFrame(step); }
+    }
+    function rain(n) { for (let i = 0; i < n; i++) P.push({ x: Math.random() * cv.width, y: -4 - Math.random() * 40, vx: (Math.random() - 0.5) * 20, vy: 20 + Math.random() * 40, c: COLS[Math.random() * COLS.length | 0], life: 4 + Math.random() * 2, ph: Math.random() * 6, w: 1 }); if (!raf) { last = performance.now(); raf = requestAnimationFrame(step); } }
+    function step(t) {
+      const dt = Math.min(0.05, (t - last) / 1000); last = t;
+      g.clearRect(0, 0, cv.width, cv.height);
+      for (let i = P.length - 1; i >= 0; i--) {
+        const p = P[i];
+        p.vy += 140 * dt; p.vx *= 0.985; p.vy = Math.min(p.vy, 70);
+        p.x += (p.vx + Math.sin(p.ph) * 12) * dt; p.y += p.vy * dt; p.ph += dt * 7; p.life -= dt;
+        if (p.life <= 0 || p.y > cv.height + 6) { P.splice(i, 1); continue; }
+        g.fillStyle = p.c; g.fillRect(p.x | 0, p.y | 0, Math.sin(p.ph) > 0 ? p.w + 1 : 1, p.w + 1);
+      }
+      raf = P.length ? requestAnimationFrame(step) : 0;
+      if (!raf) g.clearRect(0, 0, cv.width, cv.height);
+    }
+    return { burst, rain };
+  })();
+  window.Konfetti = Confetti; // games may use it too: Konfetti.burst(x, y, n)
+  let confettiCount = 0;
+  document.getElementById('confettiBtn').onclick = e => {
+    A.unlock(); A.sfx('coin');
+    const r = e.currentTarget.getBoundingClientRect();
+    Confetti.burst(r.left + r.width / 2, r.bottom, 70, 1.2);
+    confettiCount++;
+    const MSG = { 1: 'Eva hat IMMER Konfetti dabei 🎉', 10: '10× Konfetti! Der Vorrat ist unendlich.', 28: '28× Konfetti – eins für jedes Jahr! 🎂', 50: '50×?! Das putzt ihr aber weg.', 100: '100× Konfetti. Legende. 👑' };
+    if (MSG[confettiCount]) E.toast(MSG[confettiCount], 2200);
+  };
+
   document.getElementById('scoreBtn').onclick = () => { A.unlock(); A.sfx('click'); showBoard(); };
 
   window.__go = go; // handy for testing from the console

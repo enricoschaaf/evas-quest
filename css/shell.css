@@ -159,3 +159,5 @@
 .board-list .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .board-list .tm{color:var(--accent)}
 .board-foot{font-size:16px;opacity:.75;text-align:center}
+
+#confettiLayer{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:150;image-rendering:pixelated}
