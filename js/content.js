@@ -4,6 +4,8 @@
    ====================================================================== */
 window.CONTENT = {
   birthdayName: 'Eva',
+  // Gemeinsame Bestenliste (Cloudflare Worker)
+  scoresUrl: 'https://evas-quest-scores.enricoschaaf1998.workers.dev',
   from: ['Laurenz', 'Enrico', 'Hannah', 'Magnus'],
 
   // Persönliche Nachricht im Finale (Zeilen werden einzeln angezeigt)

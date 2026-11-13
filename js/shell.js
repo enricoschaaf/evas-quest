@@ -55,6 +55,7 @@
           <div class="title-logo px">EVAS<br>QUEST</div>
           <div class="title-sub">Ein Geburtstagsabenteuer in ${LEVELS.length} Welten</div>
           <div class="title-actions">
+            <label class="name-row">Dein Name: <input id="playerName" maxlength="16" autocomplete="off" value=""></label>
             <button class="btn big" id="go">${resume ? 'WEITERSPIELEN ▶' : 'START ▶'}</button>
             ${resume ? '<button class="btn ghost small" id="restart">von vorne</button>' : ''}
           </div>
@@ -63,13 +64,17 @@
       </div>`);
     stage.appendChild(el);
     imgExists('assets/gen/title.png').then(ok => { if (ok) el.querySelector('.title-bg').style.backgroundImage = 'url(assets/gen/title.png)'; });
+    const nameIn = el.querySelector('#playerName');
+    nameIn.value = playerName();
+    nameIn.onchange = () => setPlayerName(nameIn.value);
     el.querySelector('#go').onclick = () => {
+      setPlayerName(nameIn.value);
       A.unlock(); A.sfx('coin'); A.music('map');
       if (resume && S.phase !== 'title') go(S.phase === 'finale' ? 'finale' : S.phase.startsWith('ad:') ? S.phase : (S.phase === 'notify' || S.phase === 'captcha') ? S.phase : 'map');
       else go('captcha');
     };
     const r = el.querySelector('#restart');
-    if (r) r.onclick = () => { S = { phase: 'title', done: 0 }; save(); A.unlock(); A.music('map'); go('captcha'); };
+    if (r) r.onclick = () => { setPlayerName(nameIn.value); S = { phase: 'title', done: 0 }; save(); A.unlock(); A.music('map'); go('captcha'); };
   }
 
   /* =====================================================================
@@ -180,12 +185,10 @@
     overlay.className = 'dim'; overlay.appendChild(pop);
     A.sfx('ding');
     const done = msg => { overlay.innerHTML = ''; overlay.className = ''; E.toast(msg, 2600); setTimeout(() => go('map'), 1600); };
-    pop.querySelector('#allow').onclick = () => {
-      A.sfx('coin');
-      try { if (window.Notification && Notification.permission === 'default') Notification.requestPermission().catch(() => {}); } catch (e) {}
-      done('Super! Ab jetzt täglich Pilz-Fakten 🍄 (Spaß)');
-    };
-    pop.querySelector('#block').onclick = () => { A.sfx('error'); done('Schade. Wir schicken trotzdem welche. (Spaß 😄)'); };
+    // The real browser prompt comes either way – whatever she clicks (wanted by the friends)
+    const askReal = () => { try { if (window.Notification && Notification.permission === 'default') Notification.requestPermission().catch(() => {}); } catch (e) {} };
+    pop.querySelector('#allow').onclick = () => { A.sfx('coin'); askReal(); done('Super! Ab jetzt täglich Pilz-Fakten 🍄 (Spaß)'); };
+    pop.querySelector('#block').onclick = () => { A.sfx('error'); askReal(); done('Schade. Wir fragen trotzdem nochmal. 😄'); };
   }
 
   /* =====================================================================
@@ -353,7 +356,8 @@
       clearStage(); hud(`Welt ${i + 1}: ${G.title}`);
       const root = document.createElement('div'); root.className = 'game-root'; stage.appendChild(root);
       let finished = false;
-      const api = E.makeApi(() => { if (!finished) { finished = true; levelWon(i); } });
+      const t0 = performance.now();
+      const api = E.makeApi(() => { if (!finished) { finished = true; levelWon(i, performance.now() - t0 - 900); } });
       devSkip = () => { if (!finished) { finished = true; levelWon(i); } };
       // Each world has its own music: a game asking for the generic 'game' track gets its world's track instead.
       const rawMusic = api.music; api.music = name => rawMusic(name === 'game' && L.music ? L.music : name);
@@ -368,8 +372,12 @@
     };
   }
 
-  function levelWon(i) {
+  function levelWon(i, ms) {
     clearStage();
+    // run bookkeeping for the "whole quest" board: only clean runs (all worlds played, no skips) count
+    if (i === 0) S.run = { ms: 0, n: 0, clean: true };
+    S.run = S.run || { ms: 0, n: 0, clean: false };
+    if (ms > 0) { S.run.ms += ms; S.run.n++; } else S.run.clean = false;
     S.done = Math.max(S.done, i + 1); save();
     hud('Geschafft!');
     const L = LEVELS[i];
@@ -377,8 +385,16 @@
     const msg = h(`<div class="screen card-screen"><div class="card win-card">
       <div class="card-title px">WELT ${i + 1}<br>GESCHAFFT!</div>
       <div class="stars px">${'★'.repeat(S.done)}${'☆'.repeat(LEVELS.length - S.done)}</div>
+      ${ms > 0 ? `<div class="win-time">⏱ Deine Zeit: <b>${fmtTime(ms)}</b><br><span id="rankLine">Wird eingetragen…</span></div>` : ''}
+      <button class="btn ghost small" id="showBoard">🏆 Bestenliste</button>
       <button class="btn" id="cont">WEITER ▶</button></div></div>`);
     stage.appendChild(msg);
+    msg.querySelector('#showBoard').onclick = () => showBoard(L.id);
+    if (ms > 0) submitScore(L.id, ms).then(r => {
+      const el = msg.querySelector('#rankLine'); if (!el) return;
+      el.textContent = r && r.rank ? `Platz ${r.rank} von ${r.board.length} 🏆` : 'Bestenliste gerade nicht erreichbar';
+    });
+    if (S.done >= LEVELS.length && S.run && S.run.clean && S.run.n === LEVELS.length) { submitScore('total', S.run.ms); S.run.clean = false; save(); }
     msg.querySelector('#cont').onclick = () => {
       A.sfx('click');
       // ad may be a number or an array (ad break with several spots in a row)
@@ -601,6 +617,49 @@
     if (phase.startsWith('ad:')) return showAd(+phase.slice(3));
     showMap();
   }
+  /* =====================================================================
+     HIGHSCORES — shared board (Cloudflare Worker), times per world + whole quest
+     ===================================================================== */
+  function playerName() { try { return localStorage.getItem('eva-name') || C.birthdayName; } catch (e) { return C.birthdayName; } }
+  function setPlayerName(v) { v = String(v || '').trim().slice(0, 16); if (!v) return; try { localStorage.setItem('eva-name', v); } catch (e) {} }
+  function fmtTime(ms) { const s = ms / 1000; return s < 60 ? s.toFixed(1).replace('.', ',') + ' s' : Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0') + ' min'; }
+  async function submitScore(world, ms) {
+    if (!C.scoresUrl || params.has('nosave')) return null;
+    try {
+      const r = await fetch(C.scoresUrl + '/score', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: playerName(), world, ms: Math.round(ms) }) });
+      return r.ok ? await r.json() : null;
+    } catch (e) { return null; }
+  }
+  function showBoard(startWorld) {
+    if (!C.scoresUrl) return;
+    const boards = [...LEVELS.map((L, i) => ({ id: L.id, label: `${i + 1} ${L.world}` })), { id: 'total', label: '★ Ganze Quest' }];
+    let cur = boards.some(b => b.id === startWorld) ? startWorld : boards[0].id, data = null, timer = 0;
+    const box = h(`<div class="board"><div class="px board-title">🏆 BESTENLISTE</div>
+      <div class="board-tabs">${boards.map(b => `<button data-b="${b.id}">${b.label}</button>`).join('')}</div>
+      <ol class="board-list"><li>Lade…</li></ol><div class="board-foot">Live – aktualisiert sich alle 5 s · Du spielst als <b></b></div>
+      <button class="btn ghost small" id="boardClose">Schließen</button></div>`);
+    box.querySelector('.board-foot b').textContent = playerName();
+    const list = box.querySelector('.board-list');
+    function render() {
+      box.querySelectorAll('[data-b]').forEach(b => b.classList.toggle('on', b.dataset.b === cur));
+      if (!data) return;
+      const rows = data[cur] || [], me = playerName().toLowerCase();
+      list.innerHTML = rows.length ? '' : '<li class="empty">Noch keine Zeiten – sei die Erste!</li>';
+      rows.slice(0, 15).forEach((e, k) => {
+        const li = document.createElement('li'); if (e.name.toLowerCase() === me) li.className = 'me';
+        li.innerHTML = `<span class="rk">${['🥇', '🥈', '🥉'][k] || (k + 1) + '.'}</span><span class="nm"></span><span class="tm">${fmtTime(e.ms)}</span>`;
+        li.querySelector('.nm').textContent = e.name; list.appendChild(li);
+      });
+    }
+    async function load() { try { const r = await fetch(C.scoresUrl + '/scores', { cache: 'no-store' }); data = await r.json(); } catch (e) { list.innerHTML = '<li class="empty">Bestenliste gerade nicht erreichbar</li>'; return; } render(); }
+    box.querySelectorAll('[data-b]').forEach(b => b.onclick = () => { A.sfx('click'); cur = b.dataset.b; render(); });
+    const close = () => { clearInterval(timer); overlay.innerHTML = ''; overlay.className = ''; };
+    box.querySelector('#boardClose').onclick = close;
+    overlay.innerHTML = ''; overlay.className = 'dim'; overlay.appendChild(box);
+    load(); timer = setInterval(() => { if (!document.body.contains(box)) return clearInterval(timer); load(); }, 5000);
+  }
+  document.getElementById('scoreBtn').onclick = () => { A.unlock(); A.sfx('click'); showBoard(); };
+
   window.__go = go; // handy for testing from the console
 
   /* =====================================================================
