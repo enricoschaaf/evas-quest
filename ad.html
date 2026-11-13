@@ -1,0 +1,26 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Danke für deinen Klick!</title>
+<style>
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#fff;font-family:Helvetica,Arial,sans-serif;text-align:center;padding:20px;box-sizing:border-box}
+.c{max-width:380px}.e{font-size:90px;animation:b 1s infinite alternate}@keyframes b{to{transform:translateY(-10px) rotate(8deg)}}
+h1{font-size:26px;margin:.4em 0}p{color:#555;line-height:1.45}.s{display:inline-block;margin-top:14px;background:#0a9d58;color:#fff;padding:8px 14px;border-radius:20px;font-weight:700}
+small{display:block;margin-top:30px;color:#999}
+</style></head><body><div class="c">
+<div class="e" id="e">🍄</div>
+<h1 id="h">Danke für deine Bestellung!</h1>
+<p id="p">Dein Abo wurde erfolgreich abgeschlossen. Ab morgen kommt jeden Tag ein Pilz per Post.</p>
+<div class="s">✔ Zahlung erfolgreich</div>
+<small>(Spaß 😄 Kein Abo, kein Pilz. Schließ diesen Tab und spiel im anderen weiter!)</small>
+</div>
+<script>
+const i = +(new URLSearchParams(location.search).get('ad') || 0);
+const v = [
+ ['🍄','Danke für deine Bestellung!','Dein PILZ ROYALE™ Abo wurde erfolgreich abgeschlossen. Ab morgen kommt jeden Tag ein Premium-Pilz per Post.'],
+ ['🌲','Termin gebucht!','Laurenz & Magnus holen dich Samstag um 6:00 Uhr ab. Bitte Brotzeit für drei mitbringen.'],
+ ['🚀','Bestellung bestätigt!','Deine GIPFELBOOST 3000 sind unterwegs. Bitte unterschreib vorher noch den Haftungsausschluss (37 Seiten).'],
+ ['💍','Match! 💘','Niklas hat deine Anfrage angenommen. Eigentlich hat er schon vor einer Weile Ja gesagt. Wir sehen uns auf der Hochzeit! 🪩'],
+ ['🎲','Installation läuft… 3 %','KNIFFLIG™ wird installiert. Geschätzte Restzeit: 4 Jahre. Bitte lass dein Handy so lange an.'],
+ ['🎰','Willkommensbonus aktiviert!','Du hast 0 € gewonnen! Zum Auszahlen bitte 7 Freunde einladen und einen Kniffel würfeln.']
+][i] || [];
+if (v.length){document.getElementById('e').textContent=v[0];document.getElementById('h').textContent=v[1];document.getElementById('p').textContent=v[2];}
+</script></body></html>

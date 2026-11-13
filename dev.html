@@ -1,0 +1,21 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Dev Harness</title><link rel="stylesheet" href="css/style.css"></head><body>
+<div id="hud"><span class="title" id="t">dev</span><button class="iconbtn" id="mute">🔊</button></div>
+<div id="stage"></div>
+<script src="js/engine.js"></script>
+<script>
+// Usage: dev.html?game=bottles  — loads js/games/<id>.js and starts it standalone.
+const id = new URLSearchParams(location.search).get('game') || 'bottles';
+const s = document.createElement('script'); s.src = 'js/games/' + id + '.js?' + Date.now();
+s.onload = () => {
+  const G = GAMES[id]; document.getElementById('t').textContent = G.title;
+  const stage = document.getElementById('stage');
+  let cleanup;
+  const run = () => { stage.innerHTML = ''; cleanup = G.start(stage, Engine.makeApi(() => { window.__won = true; Engine.toast('GEWONNEN! (dev)', 3000); if (id.startsWith('finale')) return; /* finales keep running (free play) */ cleanup && cleanup(); setTimeout(run, 1500); })); };
+  run();
+};
+document.body.appendChild(s);
+const m = document.getElementById('mute');
+const upd = () => m.textContent = Engine.Audio.isMuted() ? '🔇' : '🔊';
+m.onclick = () => { Engine.Audio.toggleMute(); upd(); }; upd();
+</script></body></html>

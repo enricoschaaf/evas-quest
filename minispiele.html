@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="de"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Lauf-Minispiele</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+  body{overflow:auto}
+  #tabs{position:fixed;top:0;left:0;right:0;height:52px;display:flex;gap:6px;align-items:center;padding:0 8px;background:var(--dark);border-bottom:3px solid #000;z-index:50;overflow-x:auto}
+  #tabs button{flex:none;font-family:'Press Start 2P',monospace;font-size:9px;padding:9px 10px;border:0;background:#2b3b31;color:var(--text);box-shadow:0 0 0 2px #000;cursor:pointer;white-space:nowrap}
+  #tabs button.on{background:var(--accent);color:#111}
+  #tabs .sp{flex:1}
+  #frame{position:fixed;top:52px;left:0;right:0;bottom:0;border:0;width:100%;height:calc(100% - 52px);background:#000}
+  #info{position:fixed;left:8px;bottom:8px;max-width:min(420px,calc(100% - 16px));background:#000c;border:2px solid var(--line);padding:8px 10px;font-size:18px;z-index:40;line-height:1.1}
+  #info b{color:var(--accent);font-family:'Press Start 2P',monospace;font-size:9px;display:block;margin-bottom:4px}
+  #info.hide{display:none}
+</style></head><body>
+<div id="tabs"></div>
+<iframe id="frame" allow="autoplay"></iframe>
+<div id="info"></div>
+<script>
+// Kandidaten für das Lauf-Minispiel. Zwischen den Tabs wechseln, ausprobieren, Favorit wählen.
+const SETS = {
+  lauf: [
+  { id: 'run_rhythm', name: '1 Im Takt',        desc: 'Links/rechts im Rhythmus tippen. Aus dem Takt = stolpern.' },
+  { id: 'run_3d',     name: '2 Marathon 3D',    desc: '3D-Pixel-Trailrun: Spuren wechseln, über Wurzeln springen, Becher sammeln.' },
+  { id: 'run_gpsart', name: '3 GPS-Kunst',      desc: 'Lauf eine Route, die ein Herz auf die Karte malt.' },
+  { id: 'run_water',  name: '4 Verpflegung',    desc: 'Im Vorbeilaufen Becher schnappen, Bananenschalen ausweichen.' },
+  { id: 'run_sprint', name: '5 Zielsprint',     desc: 'Wettrennen gegen Magnus & Laurenz. Kraft einteilen!' }
+  ],
+  flappy: [
+  { id: 'flappy',        name: '0 Original',    desc: 'Die aktuelle Version im Spiel.' },
+  { id: 'flappy_disco',  name: '1 Disko-Flug',  desc: 'Niklas hängt an einer Disko-Kugel als Hindernis. Je weiter, desto mehr Disko-Modus.' },
+  { id: 'flappy_foto',   name: '2 Foto-Safari', desc: 'Fliegen + 📸: Tiere im richtigen Moment fotografieren.' },
+  { id: 'flappy_sturm',  name: '3 Herbststurm', desc: 'Windböen, wandernde Lücken, wirbelnde Blätter.' },
+  { id: 'flappy_party',  name: '4 DISKO-STURM', desc: 'Alles in einem: Disko pur, Niklas an der Kugel, Fotos, Bass-Drops. 7 Lücken + 4 Fotos.' }
+  ],
+  finale: [
+  { url: 'index.html?finale&nosave', name: '0 Aktuell',      desc: 'Das jetzige Finale mit Geschenk + Disko-Party.' },
+  { id: 'finale_dance',  name: '1 Dance-Off',      desc: 'Eva tanzt im Takt, jede Combo bringt die Disko-Kugel mehr zum Leuchten.' },
+  { id: 'finale_boss',   name: '2 Geschenk-Boss',  desc: 'Das Geschenk erwacht zum Leben – Bossfight, dann Disko-Verwandlung.' },
+  { id: 'finale_credits',name: '3 Abspann',        desc: 'Feuerwerk + Abspann wie am Ende eines echten Spiels, mit euren Wünschen.' }
+  ]
+};
+// minispiele.html?set=flappy  (default: lauf)
+const SET = new URLSearchParams(location.search).get('set') || 'lauf';
+const GAMES = SETS[SET] || SETS.lauf;
+document.title = { flappy: 'Flappy-Varianten', finale: 'Finale-Varianten' }[SET] || 'Lauf-Minispiele';
+const tabs = document.getElementById('tabs'), frame = document.getElementById('frame'), info = document.getElementById('info');
+function show(i) {
+  const g = GAMES[i];
+  [...tabs.querySelectorAll('button[data-i]')].forEach(b => b.classList.toggle('on', +b.dataset.i === i));
+  frame.src = g.url ? g.url + '&t=' + Date.now() : 'dev.html?game=' + g.id + '&t=' + Date.now();
+  info.innerHTML = '<b>' + g.name + '</b>' + g.desc; info.classList.remove('hide');
+  clearTimeout(info._t); info._t = setTimeout(() => info.classList.add('hide'), 5000);
+  try { localStorage.setItem('minispiel-tab-' + SET, i); } catch (e) {}
+  frame.focus();
+}
+GAMES.forEach((g, i) => { const b = document.createElement('button'); b.textContent = g.name; b.dataset.i = i; b.onclick = () => show(i); tabs.appendChild(b); });
+let start = 0; try { start = +(localStorage.getItem('minispiel-tab-' + SET) || 0); } catch (e) {}
+show(Math.min(start, GAMES.length - 1));
+</script>
+</body></html>
